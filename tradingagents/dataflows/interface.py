@@ -23,7 +23,20 @@ from .alpha_vantage import (
     get_global_news as get_alpha_vantage_global_news,
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
-from .symbol_utils import NoMarketDataError
+from .symbol_utils import NoMarketDataError, is_ashare
+
+# Tushare A-share data source
+from .tushare_data import (
+    get_stock_data as get_tushare_stock,
+    get_indicators as get_tushare_indicators,
+    get_fundamentals as get_tushare_fundamentals,
+    get_balance_sheet as get_tushare_balance_sheet,
+    get_cashflow as get_tushare_cashflow,
+    get_income_statement as get_tushare_income_statement,
+    get_insider_transactions as get_tushare_insider_transactions,
+    get_news as get_tushare_news,
+    get_global_news as get_tushare_global_news,
+)
 
 # Configuration and routing logic
 from .config import get_config
@@ -64,47 +77,57 @@ TOOLS_CATEGORIES = {
 VENDOR_LIST = [
     "yfinance",
     "alpha_vantage",
+    "tushare",
 ]
 
 # Mapping of methods to their vendor-specific implementations
 VENDOR_METHODS = {
     # core_stock_apis
     "get_stock_data": {
+        "tushare": get_tushare_stock,
         "alpha_vantage": get_alpha_vantage_stock,
         "yfinance": get_YFin_data_online,
     },
     # technical_indicators
     "get_indicators": {
+        "tushare": get_tushare_indicators,
         "alpha_vantage": get_alpha_vantage_indicator,
         "yfinance": get_stock_stats_indicators_window,
     },
     # fundamental_data
     "get_fundamentals": {
+        "tushare": get_tushare_fundamentals,
         "alpha_vantage": get_alpha_vantage_fundamentals,
         "yfinance": get_yfinance_fundamentals,
     },
     "get_balance_sheet": {
+        "tushare": get_tushare_balance_sheet,
         "alpha_vantage": get_alpha_vantage_balance_sheet,
         "yfinance": get_yfinance_balance_sheet,
     },
     "get_cashflow": {
+        "tushare": get_tushare_cashflow,
         "alpha_vantage": get_alpha_vantage_cashflow,
         "yfinance": get_yfinance_cashflow,
     },
     "get_income_statement": {
+        "tushare": get_tushare_income_statement,
         "alpha_vantage": get_alpha_vantage_income_statement,
         "yfinance": get_yfinance_income_statement,
     },
     # news_data
     "get_news": {
+        "tushare": get_tushare_news,
         "alpha_vantage": get_alpha_vantage_news,
         "yfinance": get_news_yfinance,
     },
     "get_global_news": {
+        "tushare": get_tushare_global_news,
         "yfinance": get_global_news_yfinance,
         "alpha_vantage": get_alpha_vantage_global_news,
     },
     "get_insider_transactions": {
+        "tushare": get_tushare_insider_transactions,
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
     },
@@ -117,11 +140,19 @@ def get_category_for_method(method: str) -> str:
             return category
     raise ValueError(f"Method '{method}' not found in any category")
 
-def get_vendor(category: str, method: str = None) -> str:
+def get_vendor(category: str, method: str = None, symbol: str = None) -> str:
     """Get the configured vendor for a data category or specific tool method.
+
+    For A-share symbols, tushare is automatically prioritised when a
+    TUSHARE_TOKEN is configured, regardless of the default vendor setting.
     Tool-level configuration takes precedence over category-level.
     """
+    import os
     config = get_config()
+
+    # Auto-route A-share symbols to tushare when token is available
+    if symbol and is_ashare(symbol) and os.environ.get("TUSHARE_TOKEN"):
+        return "tushare"
 
     # Check tool-level configuration first (if method provided)
     if method:
@@ -133,9 +164,16 @@ def get_vendor(category: str, method: str = None) -> str:
     return config.get("data_vendors", {}).get(category, "default")
 
 def route_to_vendor(method: str, *args, **kwargs):
-    """Route method calls to appropriate vendor implementation with fallback support."""
+    """Route method calls to appropriate vendor implementation with fallback support.
+
+    A-share symbols (e.g. 600519.SS, 000001.SZ) are automatically routed to
+    Tushare Pro when TUSHARE_TOKEN is set, with yfinance as fallback.
+    """
     category = get_category_for_method(method)
-    vendor_config = get_vendor(category, method)
+
+    # Extract symbol from args for A-share auto-routing (first positional arg)
+    symbol = args[0] if args else kwargs.get("symbol", None)
+    vendor_config = get_vendor(category, method, symbol=symbol)
     primary_vendors = [v.strip() for v in vendor_config.split(',')]
 
     if method not in VENDOR_METHODS:
@@ -184,7 +222,7 @@ def route_to_vendor(method: str, *args, **kwargs):
         return (
             f"NO_DATA_AVAILABLE: No market data found for '{sym}'{resolved} from "
             f"any configured vendor. The symbol may be invalid, delisted, or not "
-            f"covered by Yahoo Finance / Alpha Vantage. Do not estimate or "
+            f"covered by the configured data vendors. Do not estimate or "
             f"fabricate values — report that data is unavailable for this symbol."
         )
 

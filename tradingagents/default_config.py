@@ -18,6 +18,7 @@ _ENV_OVERRIDES = {
     "TRADINGAGENTS_CHECKPOINT_ENABLED":   "checkpoint_enabled",
     "TRADINGAGENTS_BENCHMARK_TICKER":     "benchmark_ticker",
     "TRADINGAGENTS_TEMPERATURE":          "temperature",
+    "TRADINGAGENTS_CHINA_DATA_SOURCE":    "china_data_source",
 }
 
 
@@ -70,6 +71,10 @@ DEFAULT_CONFIG = _apply_env_overrides({
     # variation on models that honor it; reasoning models largely ignore it
     # and no setting makes LLM output bit-identical across runs (see README).
     "temperature": None,
+    # China A-share data source: "tushare" (default when TUSHARE_TOKEN is set),
+    # "yfinance" (fallback, limited coverage). Tushare is auto-selected when
+    # TUSHARE_TOKEN is present and symbol is detected as A-share.
+    "china_data_source": "tushare",
     # Checkpoint/resume: when True, LangGraph saves state after each node
     # so a crashed run can resume from the last successful step.
     "checkpoint_enabled": False,

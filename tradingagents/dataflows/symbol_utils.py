@@ -129,3 +129,59 @@ def normalize_symbol(raw: str) -> str:
 def is_yahoo_safe(symbol: str) -> bool:
     """True when ``symbol`` only contains characters Yahoo symbols use."""
     return bool(symbol) and _YAHOO_SAFE.fullmatch(symbol) is not None
+
+
+# ─────────────────────────────────────────────────────────────
+# A-share symbol detection and routing
+# ─────────────────────────────────────────────────────────────
+
+def is_ashare(symbol: str) -> bool:
+    """Return True if the symbol refers to a Chinese A-share stock.
+
+    Accepts the following formats:
+        600519.SS   Shanghai via yfinance suffix
+        000001.SZ   Shenzhen via yfinance suffix
+        600519.SH   Shanghai via Tushare suffix
+        600519      Bare 6-digit code
+    """
+    if not isinstance(symbol, str):
+        return False
+    s = symbol.strip().upper()
+    # yfinance style suffixes
+    if s.endswith(".SS") or s.endswith(".SH"):
+        code = s[:-3]
+        return len(code) == 6 and code.isdigit()
+    if s.endswith(".SZ"):
+        code = s[:-3]
+        return len(code) == 6 and code.isdigit()
+    # bare 6-digit
+    if len(s) == 6 and s.isdigit():
+        return True
+    return False
+
+
+def to_tushare_code(symbol: str) -> str:
+    """Normalise any A-share symbol to Tushare ts_code format (XXXXXX.SH / XXXXXX.SZ).
+
+    Resolution rules:
+        XXXXXX.SS  ->  XXXXXX.SH   (yfinance Shanghai suffix -> Tushare)
+        XXXXXX.SH  ->  XXXXXX.SH   (already correct)
+        XXXXXX.SZ  ->  XXXXXX.SZ   (already correct)
+        XXXXXX     ->  XXXXXX.SH   if starts with 6/9/5 (Shanghai / STAR)
+        XXXXXX     ->  XXXXXX.SZ   if starts with 0/2/3 (Shenzhen / ChiNext)
+    """
+    s = symbol.strip().upper()
+    if s.endswith(".SH"):
+        return s
+    if s.endswith(".SZ"):
+        return s
+    if s.endswith(".SS"):
+        return s[:-3] + ".SH"
+    # bare 6-digit
+    code = s.split(".")[0]
+    if len(code) == 6 and code.isdigit():
+        if code[0] in ("6", "9", "5"):
+            return code + ".SH"
+        else:
+            return code + ".SZ"
+    return s
